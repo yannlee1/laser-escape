@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Laser Escape - Plein écran sans cacher UI</title>
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: cursive;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        .menu {
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .menu label {
+            font-size: 14px;
+        }
+
+        select,
+        button {
+            padding: 5px 10px;
+            border-radius: 2px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            background-color: aquamarine;
+        }
+
+        #game {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            background: #222;
+            border: 3px solid white;
+            overflow: hidden;
+        }
+
+        #player {
+            width: 20px;
+            height: 20px;
+            background: blue;
+            position: absolute;
+            left: 190px;
+            top: 190px;
+            z-index: 2;
+        }
+
+        .laser {
+            position: absolute;
+            background: red;
+            z-index: 1;
+        }
+
+        #overlay {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 3;
+        }
+
+        #game-over {
+            font-size: 24px;
+            color: red;
+            margin-bottom: 10px;
+        }
+
+        #restart-btn {
+            padding: 10px 20px;
+            background: white;
+            color: black;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #score {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            font-size: 18px;
+            z-index: 4;
+        }
+
+        #joystick-container {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 100px;
+            height: 100px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            touch-action: none;
+            z-index: 10;
+        }
+
+        #joystick-handle {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Menu avec bouton plein écran -->
+    <div class="menu">
+        <label>🎨 Couleur joueur:
+            <select id="playerColor">
+                <option value="blue" selected>Bleu</option>
+                <option value="green">Vert</option>
+                <option value="yellow">Jaune</option>
+                <option value="white">Blanc</option>
+                <option value="purple">Violet</option>
+            </select>
+        </label>
+
+        <label>🔴 Couleur laser:
+            <select id="laserColor">
+                <option value="red" selected>Rouge</option>
+                <option value="orange">Orange</option>
+                <option value="pink">Rose</option>
+                <option value="cyan">Cyan</option>
+                <option value="lime">Lime</option>
+            </select>
+        </label>
+
+        <button id="pause-btn">⏸️ Pause</button>
+        <button id="fullscreen-btn">📱 Plein écran</button>
+    </div>
+
+    <div id="game">
+        <div id="player"></div>
+        <div id="score">⏱️ Temps : 0s</div>
+        <div id="overlay">
+            <div id="game-over">💥 Game Over !</div>
+            <button id="restart-btn">Rejouer</button>
+        </div>
+    </div>
+
+    <div id="joystick-container">
+        <div id="joystick-handle"></div>
+    </div>
+
+    <script>
+        const game = document.getElementById("game");
+        const player = document.getElementById("player");
+        const overlay = document.getElementById("overlay");
+        const restartBtn = document.getElementById("restart-btn");
+        const scoreDisplay = document.getElementById("score");
+        const joystickContainer = document.getElementById("joystick-container");
+        const joystickHandle = document.getElementById("joystick-handle");
+        const playerColorSelect = document.getElementById("playerColor");
+        const laserColorSelect = document.getElementById("laserColor");
+        const pauseBtn = document.getElementById("pause-btn");
+        const fullscreenBtn = document.getElementById("fullscreen-btn");
+
+        let x = 190, y = 190;
+        let keys = {};
+        let isGameOver = false;
+        let level = 1;
+        let time = 0;
+        let currentLaserColor = laserColorSelect.value;
+        let isPaused = false;
+
+        document.addEventListener("keydown", e => {
+            if (!isPaused) keys[e.key] = true;
+        });
+        document.addEventListener("keyup", e => {
+            if (!isPaused) keys[e.key] = false;
+        });
+
+        let moveX = 0, moveY = 0;
+
+        joystickContainer.addEventListener("touchstart", e => {
+            if (!isPaused) e.preventDefault();
+        });
+
+        joystickContainer.addEventListener("touchmove", e => {
+            if (isPaused) return;
+            const rect = joystickContainer.getBoundingClientRect();
+            const touch = e.touches[0];
+            let dx = touch.clientX - rect.left - 50;
+            let dy = touch.clientY - rect.top - 50;
+            const max = 40;
+            const dist = Math.min(max, Math.hypot(dx, dy));
+            const angle = Math.atan2(dy, dx);
+            moveX = Math.cos(angle) * dist / max;
+            moveY = Math.sin(angle) * dist / max;
+
+            joystickHandle.style.left = 50 + moveX * max + "px";
+            joystickHandle.style.top = 50 + moveY * max + "px";
+        });
+
+        joystickContainer.addEventListener("touchend", () => {
+            if (isPaused) return;
+            moveX = 0;
+            moveY = 0;
+            joystickHandle.style.left = "50%";
+            joystickHandle.style.top = "50%";
+        });
+
+        function movePlayer() {
+            if (isGameOver || isPaused) {
+                requestAnimationFrame(movePlayer);
+                return;
+            }
+
+            let dx = 0, dy = 0;
+            if (keys["ArrowUp"] || keys["w"]) dy -= 1;
+            if (keys["ArrowDown"] || keys["s"]) dy += 1;
+            if (keys["ArrowLeft"] || keys["a"]) dx -= 1;
+            if (keys["ArrowRight"] || keys["d"]) dx += 1;
+
+            dx += moveX;
+            dy += moveY;
+
+            x += dx * 3;
+            y += dy * 3;
+
+            x = Math.max(0, Math.min(x, 380));
+            y = Math.max(0, Math.min(y, 380));
+
+            player.style.left = x + "px";
+            player.style.top = y + "px";
+
+            requestAnimationFrame(movePlayer);
+        }
+
+        function checkCollision(r1, r2) {
+            return !(r1.right < r2.left || r1.left > r2.right || r1.bottom < r2.top || r1.top > r2.bottom);
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            overlay.style.display = "flex";
+        }
+
+        let lasers = [];
+
+        function createLaser(speed) {
+            const laser = document.createElement("div");
+            laser.classList.add("laser");
+            laser.style.background = currentLaserColor;
+
+            const dir = Math.floor(Math.random() * 4);
+            let posX = 0, posY = 0, dx = 0, dy = 0;
+            let width = 0, height = 0;
+
+            switch (dir) {
+                case 0: posX = Math.random() * 360; posY = -10; dx = 0; dy = 1; width = 40; height = 10; break;
+                case 1: posX = Math.random() * 360; posY = 410; dx = 0; dy = -1; width = 40; height = 10; break;
+                case 2: posX = -10; posY = Math.random() * 360; dx = 1; dy = 0; width = 10; height = 40; break;
+                case 3: posX = 410; posY = Math.random() * 360; dx = -1; dy = 0; width = 10; height = 40; break;
+            }
+
+            laser.style.left = posX + "px";
+            laser.style.top = posY + "px";
+            laser.style.width = width + "px";
+            laser.style.height = height + "px";
+
+            game.appendChild(laser);
+
+            lasers.push({ element: laser, posX, posY, dx, dy, speed });
+
+            function animate() {
+                if (isGameOver || isPaused) {
+                    requestAnimationFrame(animate);
+                    return;
+                }
+
+                posX += dx * speed;
+                posY += dy * speed;
+                laser.style.left = posX + "px";
+                laser.style.top = posY + "px";
+
+                const pr = player.getBoundingClientRect();
+                const lr = laser.getBoundingClientRect();
+                if (checkCollision(pr, lr)) {
+                    gameOver();
+                    laser.remove();
+                    return;
+                }
+
+                if (posX < -50 || posX > 450 || posY < -50 || posY > 450) {
+                    laser.remove();
+                    lasers = lasers.filter(l => l.element !== laser);
+                    return;
+                }
+
+                // Update position in lasers array
+                for (let l of lasers) {
+                    if (l.element === laser) {
+                        l.posX = posX;
+                        l.posY = posY;
+                    }
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            animate();
+        }
+
+        function startLasers() {
+            for (let i = 0; i < level; i++) {
+                createLaser(2 + level * 0.1);
+            }
+        }
+
+        const MAX_LEVEL = 30;
+
+        let laserInterval = setInterval(() => {
+            if (!isGameOver && !isPaused && level < MAX_LEVEL) {
+                level++;
+                startLasers();
+            }
+        }, 6000);
+
+        let timeInterval = setInterval(() => {
+            if (!isGameOver && !isPaused) {
+                time++;
+                scoreDisplay.textContent = `⏱️ Temps : ${time}s`;
+            }
+        }, 1000);
+
+        function resetGame() {
+            x = 190;
+            y = 190;
+            isGameOver = false;
+            level = 1;
+            time = 0;
+            moveX = 0;
+            moveY = 0;
+            keys = {};
+            overlay.style.display = "none";
+            player.style.left = x + "px";
+            player.style.top = y + "px";
+            document.querySelectorAll(".laser").forEach(el => el.remove());
+            lasers = [];
+            scoreDisplay.textContent = "⏱️ Temps : 0s";
+            startLasers();
+        }
+
+        restartBtn.addEventListener("click", resetGame);
+
+        playerColorSelect.addEventListener("change", () => {
+            player.style.background = playerColorSelect.value;
+        });
+
+        laserColorSelect.addEventListener("change", () => {
+            currentLaserColor = laserColorSelect.value;
+        });
+
+        pauseBtn.addEventListener("click", () => {
+            isPaused = !isPaused;
+            pauseBtn.textContent = isPaused ? "▶️ Reprendre" : "⏸️ Pause";
+        });
+
+        fullscreenBtn.addEventListener("click", () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`Erreur plein écran: ${err.message}`);
+                });
+                fullscreenBtn.textContent = '↩️ Quitter plein écran';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.textContent = '📱 Plein écran';
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                fullscreenBtn.textContent = '📱 Plein écran';
+            }
+        });
+
+        player.style.background = playerColorSelect.value;
+        movePlayer();
+        startLasers();
+    </script>
+</body>
+
+</html>
